@@ -14,8 +14,8 @@
 # IMPORTANT: Once you deploy your backend on Render, uncomment the redirect rule
 # below and replace the 'to' URL with your actual Render web service URL.
 #
-# [[redirects]]
-#   from = "/api/*"
-#   to = "https://your-sql-lineage-backend.onrender.com/api/:splat"
-#   status = 200
-#   force = true
+[[redirects]]
+  from = "/api/*"
+  to = "https://sql-lineage-backend.onrender.com/api/:splat"
+  status = 200
+  force = true
