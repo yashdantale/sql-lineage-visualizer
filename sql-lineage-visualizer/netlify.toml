@@ -4,18 +4,4 @@
 [build]
   # Since index.html is in the backend/ directory, and we don't have a build step (zero build/zero npm),
   # we tell Netlify to publish the backend/ directory directly to serve index.html.
-  publish = "backend"
-
-# Proxy Redirect:
-# This allows the frontend to call '/api/*' directly, and Netlify will rewrite
-# it under the hood to your Render API. This prevents any CORS problems and 
-# keeps the codebase clean.
-# 
-# IMPORTANT: Once you deploy your backend on Render, uncomment the redirect rule
-# below and replace the 'to' URL with your actual Render web service URL.
-#
-[[redirects]]
-  from = "/api/*"
-  to = "https://sql-lineage-backend.onrender.com/api/:splat"
-  status = 200
-  force = true
+  publish = "sql-lineage-visualizer/backend"
