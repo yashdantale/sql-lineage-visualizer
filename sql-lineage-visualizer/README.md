@@ -4,6 +4,9 @@ A minimalist, high-performance developer tool that parses SQL queries and genera
 
 Designed for data engineers, analytics engineers, and database administrators to easily trace data flow, verify relationships, and document complex queries.
 
+🌐 **Live Demo (Frontend on Netlify):** [https://sql-lineage-visualizer.netlify.app/](https://sql-lineage-visualizer.netlify.app/)  
+⚡ **API Service (Backend on Render):** [https://sql-lineage-backend.onrender.com/](https://sql-lineage-backend.onrender.com/)
+
 ---
 
 ## ⚡ Key Features
@@ -86,18 +89,18 @@ We have included a `render.yaml` Blueprint spec file to automate the deployment 
 1. Log into [Render](https://render.com/).
 2. Click **New +** and select **Blueprint**.
 3. Connect your GitHub repository.
-4. Render will automatically parse the `render.yaml` file and create a Web Service named `sql-lineage-backend`.
+4. Render will automatically parse the `render.yaml` file and create a Web Service named `sql-lineage-backend` (with its root directory correctly mapped to `sql-lineage-visualizer/backend`).
 5. Once deployed, note down your Render Web Service URL (e.g., `https://sql-lineage-backend.onrender.com`).
 
 *Note: Render's Free instance spins down after 15 minutes of inactivity. When it is spun down, the first API request will experience a cold-start delay of ~50 seconds.*
 
 ### 2. Deploy the Frontend on Netlify
-We have included a `netlify.toml` file to configure Netlify to publish the `backend/` directory directly:
+We have included a `netlify.toml` file to configure Netlify to publish the `sql-lineage-visualizer/backend` directory directly:
 1. Log into [Netlify](https://www.netlify.com/).
 2. Click **Add new site** and select **Import from Git**.
 3. Select your GitHub repository.
 4. Netlify will automatically discover the `netlify.toml` settings:
-   - **Publish directory:** `backend`
+   - **Publish directory:** `sql-lineage-visualizer/backend`
    - **Build command:** (Leave empty/default)
 5. Deploy the site!
 
