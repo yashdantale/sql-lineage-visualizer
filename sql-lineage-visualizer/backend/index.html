@@ -1,0 +1,1252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SQL Lineage Visualizer</title>
+    
+    <!-- Google Fonts: Outfit (Sans) and JetBrains Mono (Code) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              dark: {
+                bg: "#0B0F19",
+                card: "#161B26",
+                container: "#1E293B",
+                border: "#334155"
+              },
+              brand: {
+                purple: "#8B5CF6",
+                teal: "#14B8A6"
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- React Flow Styles CDN -->
+    <link rel="stylesheet" href="https://esm.sh/@xyflow/react@12.0.4/dist/style.css">
+
+    <!-- PrismJS Dark Theme & Scripts for SQL Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+
+    <!-- html2canvas for canvas image exporting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- Babel Standalone to compile JSX in browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- ESM Import Map -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.3.1",
+          "react-dom": "https://esm.sh/react-dom@18.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+          "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+          "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+          "@xyflow/react": "https://esm.sh/@xyflow/react@12.0.4?external=react,react-dom",
+          "lucide-react": "https://esm.sh/lucide-react@0.395.0?external=react"
+        }
+      }
+    </script>
+
+    <style>
+      /* Reset & Global styles */
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        background-color: #0B0F19;
+        font-family: 'Outfit', sans-serif;
+        overflow: hidden;
+      }
+
+      /* Custom Scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0B0F19;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+      }
+
+      /* React Flow override */
+      .react-flow {
+        background-color: #0B0F19 !important;
+      }
+
+      /* Edge pulse & crawl animation */
+      .react-flow__edge-path {
+        stroke-width: 2.5;
+        filter: drop-shadow(0 0 3px rgba(139, 92, 246, 0.4));
+        transition: stroke 0.3s, opacity 0.3s, stroke-width 0.3s;
+      }
+
+      .react-flow__edge.animated path.react-flow__edge-path {
+        stroke-dasharray: 6;
+        animation: react-flow-dash 0.6s linear infinite;
+      }
+
+      @keyframes react-flow-dash {
+        from {
+          stroke-dashoffset: 12;
+        }
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+
+      /* CodeJar Code editor styles */
+      .codejar-editor {
+        font-family: 'JetBrains Mono', monospace;
+        tab-size: 4;
+        white-space: pre-wrap;
+        outline: none;
+      }
+
+      .codejar-editor token.keyword { color: #c792ea; font-weight: bold; }
+      .codejar-editor token.string { color: #ecc48d; }
+      .codejar-editor token.number { color: #f78c6c; }
+      .codejar-editor token.comment { color: #637777; font-style: italic; }
+      .codejar-editor token.function { color: #82aaff; }
+      .codejar-editor token.punctuation { color: #89ddff; }
+      .codejar-editor token.operator { color: #89ddff; }
+
+      /* Pulse animation */
+      @keyframes pulse-fast {
+        0%, 100% { opacity: 0.3; }
+        50% { opacity: 0.8; }
+      }
+      .pulse-fast {
+        animation: pulse-fast 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+      import ReactDOM from 'react-dom/client';
+      import { CodeJar } from 'https://esm.sh/codejar@3.7.0';
+      import {
+        ReactFlow,
+        Background,
+        Controls,
+        useNodesState,
+        useEdgesState,
+        Position,
+        Handle,
+        BackgroundVariant
+      } from '@xyflow/react';
+      import { 
+        Upload, 
+        Play, 
+        RefreshCw, 
+        Layers, 
+        Database, 
+        Terminal, 
+        Info, 
+        AlertTriangle, 
+        Flame,
+        Star,
+        Download,
+        History,
+        BookOpen,
+        Code,
+        Settings
+      } from 'lucide-react';
+
+      // Initial pre-loaded SQL query showing multiple CTEs and a target table
+      const INITIAL_SQL = `-- SQL Lineage Visualizer Demo Query
+WITH customer_orders AS (
+    SELECT 
+        c.customer_id,
+        c.name,
+        o.order_id,
+        o.amount,
+        o.order_date
+    FROM raw_db.customers c
+    JOIN raw_db.orders o ON c.customer_id = o.customer_id
+),
+high_value_customers AS (
+    SELECT 
+        customer_id,
+        name,
+        SUM(amount) as total_spent
+    FROM customer_orders
+    WHERE order_date >= '2026-01-01'
+    GROUP BY customer_id, name
+    HAVING SUM(amount) > 1000
+),
+marketing_segments AS (
+    SELECT 
+        hvc.customer_id,
+        hvc.name,
+        hvc.total_spent,
+        p.tier_name
+    FROM high_value_customers hvc
+    LEFT JOIN reference_db.loyalty_tiers p ON hvc.total_spent BETWEEN p.min_spend AND p.max_spend
+)
+INSERT INTO analytics_warehouse.premium_customer_cohorts
+SELECT 
+    customer_id,
+    name,
+    total_spent,
+    tier_name,
+    CURRENT_TIMESTAMP() as updated_at
+FROM marketing_segments;`;
+
+      // Custom Node Renderer for a high-contrast rounded card
+      const CustomNode = ({ id, data, selected }) => {
+        const { label, nodeType, columns, onColumnClick, selectedColTrace } = data;
+        const [expanded, setExpanded] = useState(true);
+        
+        let borderColor = "border-[#334155]";
+        let textColor = "text-slate-200";
+        let glowClass = "";
+        let typeLabel = "";
+        let icon = null;
+
+        if (nodeType === "source") {
+          borderColor = "border-[#14B8A6]"; // Teal
+          textColor = "text-[#14B8A6]";
+          glowClass = "shadow-[0_0_12px_rgba(20,184,166,0.12)]";
+          typeLabel = "SOURCE TABLE";
+          icon = <Database className="w-3.5 h-3.5 mr-1 text-[#14B8A6]" />;
+        } else if (nodeType === "target") {
+          borderColor = "border-[#8B5CF6]"; // Violet
+          textColor = "text-[#8B5CF6]";
+          glowClass = "shadow-[0_0_12px_rgba(139,92,246,0.12)]";
+          typeLabel = "TARGET TABLE";
+          icon = <Flame className="w-3.5 h-3.5 mr-1 text-[#8B5CF6]" />;
+        } else {
+          borderColor = "border-[#3B82F6]"; // Blue for CTEs
+          textColor = "text-[#3B82F6]";
+          glowClass = "shadow-[0_0_12px_rgba(59,130,246,0.12)]";
+          typeLabel = "CTE";
+          icon = <Layers className="w-3.5 h-3.5 mr-1 text-[#3B82F6]" />;
+        }
+
+        return (
+          <div className={`px-4 py-3 rounded-xl bg-[#161B26] border-2 ${borderColor} ${glowClass} min-w-[220px] text-left transition-all duration-300 hover:scale-[1.02] ${selected ? 'ring-2 ring-white/50 ring-offset-2 ring-offset-[#0B0F19]' : ''}`}>
+            <Handle 
+              type="target" 
+              position={Position.Left} 
+              style={{ background: '#475569', border: '1px solid #0B0F19', width: 8, height: 8 }}
+            />
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[9px] font-bold tracking-wider uppercase opacity-55">{typeLabel}</span>
+              {icon}
+            </div>
+            <div className="font-mono text-sm font-semibold truncate text-slate-100 mb-1" title={label}>
+              {label}
+            </div>
+
+            {/* Expandable Columns List */}
+            {columns && columns.length > 0 && (
+              <div className="mt-2 border-t border-[#1E293B]/70 pt-2">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+                  className="flex items-center justify-between w-full text-[9px] text-slate-400 hover:text-white font-bold transition-colors duration-150 focus:outline-none"
+                >
+                  <span>COLUMNS ({columns.length})</span>
+                  <span>{expanded ? '▲' : '▼'}</span>
+                </button>
+                
+                {expanded && (
+                  <div className="mt-1.5 space-y-1 max-h-36 overflow-y-auto pr-1">
+                    {columns.map((col, idx) => {
+                      const isTraced = selectedColTrace && selectedColTrace.has(`${id}:${col}`);
+                      return (
+                        <div 
+                          key={idx}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onColumnClick) onColumnClick(id, col);
+                          }}
+                          className={`px-2 py-0.5 rounded font-mono text-[10px] cursor-pointer transition-all duration-200 border truncate ${
+                            isTraced 
+                              ? 'bg-yellow-500/25 text-yellow-300 border-yellow-500/50 shadow-[0_0_8px_rgba(245,158,11,0.25)] font-semibold'
+                              : 'bg-[#0E1322] text-slate-400 border-slate-700/50 hover:text-slate-200 hover:border-slate-500'
+                          }`}
+                          title={col}
+                        >
+                          {col}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <Handle 
+              type="source" 
+              position={Position.Right} 
+              style={{ background: '#475569', border: '1px solid #0B0F19', width: 8, height: 8 }}
+            />
+          </div>
+        );
+      };
+
+      // Helper to trace upstream/downstream connection components (Table-Level)
+      const getConnectedElements = (nodes, edges, nodeId) => {
+        if (!nodeId) return { nodes: new Set(), edges: new Set() };
+        
+        const upstreamNodes = new Set();
+        const downstreamNodes = new Set();
+        const connectedEdges = new Set();
+        
+        const findUpstream = (id) => {
+          edges.forEach(e => {
+            if (e.target === id) {
+              if (!upstreamNodes.has(e.source)) {
+                upstreamNodes.add(e.source);
+                connectedEdges.add(e.id);
+                findUpstream(e.source);
+              }
+            }
+          });
+        };
+        
+        const findDownstream = (id) => {
+          edges.forEach(e => {
+            if (e.source === id) {
+              if (!downstreamNodes.has(e.target)) {
+                downstreamNodes.add(e.target);
+                connectedEdges.add(e.id);
+                findDownstream(e.target);
+              }
+            }
+          });
+        };
+        
+        findUpstream(nodeId);
+        findDownstream(nodeId);
+        
+        const allConnectedNodes = new Set([...upstreamNodes, ...downstreamNodes, nodeId]);
+        return { 
+          nodes: allConnectedNodes, 
+          edges: connectedEdges,
+          upstream: upstreamNodes,
+          downstream: downstreamNodes
+        };
+      };
+
+      // Helper to trace upstream/downstream column-level connections
+      const getColumnConnectedElements = (columnEdges, nodeId, colName) => {
+        if (!nodeId || !colName) return { nodes: new Set(), cols: new Set(), edges: new Set() };
+        
+        const connectedNodes = new Set([nodeId]);
+        const connectedCols = new Set([`${nodeId}:${colName}`]);
+        const connectedEdges = new Set();
+        
+        const traceUpstream = (currNode, currCol) => {
+          columnEdges.forEach(e => {
+            if (e.target_node === currNode && e.target_col === currCol) {
+              const key = `${e.source_node}:${e.source_col}`;
+              if (!connectedCols.has(key)) {
+                connectedCols.add(key);
+                connectedNodes.add(e.source_node);
+                connectedEdges.add(`col_e_${e.source_node}_${e.source_col}_${e.target_node}_${e.target_col}`);
+                traceUpstream(e.source_node, e.source_col);
+              }
+            }
+          });
+        };
+        
+        const traceDownstream = (currNode, currCol) => {
+          columnEdges.forEach(e => {
+            if (e.source_node === currNode && e.source_col === currCol) {
+              const key = `${e.target_node}:${e.target_col}`;
+              if (!connectedCols.has(key)) {
+                connectedCols.add(key);
+                connectedNodes.add(e.target_node);
+                connectedEdges.add(`col_e_${e.source_node}_${e.source_col}_${e.target_node}_${e.target_col}`);
+                traceDownstream(e.target_node, e.target_col);
+              }
+            }
+          });
+        };
+        
+        traceUpstream(nodeId, colName);
+        traceDownstream(nodeId, colName);
+        
+        return {
+          nodes: connectedNodes,
+          cols: connectedCols,
+          edges: connectedEdges
+        };
+      };
+
+      function App() {
+        const [sqlString, setSqlString] = useState(INITIAL_SQL);
+        const [nodes, setNodes, onNodesChange] = useNodesState([]);
+        const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+        const [columnEdges, setColumnEdges] = useState([]);
+        const [dialect, setDialect] = useState('');
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState(null);
+        
+        const [selectedNode, setSelectedNode] = useState(null);
+        const [selectedColumn, setSelectedColumn] = useState(null); // { nodeId, columnName }
+        
+        const [activeTab, setActiveTab] = useState('editor'); // 'editor' | 'history' | 'saved'
+        const fileInputRef = useRef(null);
+        const editorDomRef = useRef(null);
+        const jarRef = useRef(null);
+
+        // Load Query History from localStorage
+        const [history, setHistory] = useState(() => {
+          try {
+            return JSON.parse(localStorage.getItem('sql_lineage_history') || '[]');
+          } catch {
+            return [];
+          }
+        });
+
+        // Load Saved snippets from localStorage
+        const [savedSnippets, setSavedSnippets] = useState(() => {
+          try {
+            return JSON.parse(localStorage.getItem('sql_lineage_saved') || '[]');
+          } catch {
+            return [];
+          }
+        });
+
+        const [backendUrl, setBackendUrl] = useState(() => {
+          return localStorage.getItem('sql_lineage_backend_url') || '';
+        });
+        const [testingConnection, setTestingConnection] = useState(false);
+        const [connectionStatus, setConnectionStatus] = useState(null);
+
+        const saveBackendUrl = () => {
+          localStorage.setItem('sql_lineage_backend_url', backendUrl.trim());
+          setConnectionStatus({
+            type: 'success',
+            message: 'API URL saved successfully!'
+          });
+        };
+
+        const testBackendConnection = async () => {
+          setTestingConnection(true);
+          setConnectionStatus(null);
+          const apiBase = backendUrl.trim().replace(/\/+$/, '');
+          const endpoint = apiBase ? `${apiBase}/api/health` : '/api/health';
+          
+          try {
+            const start = performance.now();
+            const response = await fetch(endpoint, {
+              method: 'GET',
+              headers: { 'Accept': 'application/json' }
+            });
+            const end = performance.now();
+            const timeTaken = ((end - start) / 1000).toFixed(2);
+            
+            if (response.ok) {
+              setConnectionStatus({
+                type: 'success',
+                message: `Connected successfully! Response received in ${timeTaken}s.`
+              });
+            } else {
+              setConnectionStatus({
+                type: 'error',
+                message: `Failed to connect. Backend returned status ${response.status}.`
+              });
+            }
+          } catch (err) {
+            console.error(err);
+            setConnectionStatus({
+              type: 'error',
+              message: `Could not reach the backend. Check the URL and ensure your backend is running/awake.`
+            });
+          } finally {
+            setTestingConnection(false);
+          }
+        };
+
+        // Define node types object
+        const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+
+        // CodeJar Editor Sync
+        useEffect(() => {
+          if (activeTab === 'editor' && editorDomRef.current && !jarRef.current) {
+            const highlight = (editor) => {
+              editor.innerHTML = window.Prism.highlight(editor.textContent, window.Prism.languages.sql, 'sql');
+            };
+            jarRef.current = CodeJar(editorDomRef.current, highlight);
+            jarRef.current.onUpdate((text) => {
+              setSqlString(text);
+            });
+            jarRef.current.updateCode(sqlString);
+          }
+          return () => {
+            if (jarRef.current) {
+              jarRef.current.destroy();
+              jarRef.current = null;
+            }
+          };
+        }, [activeTab]);
+
+        // Keep CodeJar updated if sqlString changes from external trigger
+        useEffect(() => {
+          if (jarRef.current && jarRef.current.toString() !== sqlString) {
+            jarRef.current.updateCode(sqlString);
+          }
+        }, [sqlString]);
+
+        // Center alignment & horizontal tier layout calculation
+        const layoutGraph = useCallback((rawNodes, rawEdges) => {
+          const sources = rawNodes.filter(n => n.data.nodeType === "source");
+          const ctes = rawNodes.filter(n => n.data.nodeType === "cte");
+          const targets = rawNodes.filter(n => n.data.nodeType === "target");
+
+          const xSource = 120;
+          const xCte = 480;
+          const xTarget = 840;
+
+          const containerHeight = 500;
+
+          const calculateTiers = (tierNodes, xPos) => {
+            const count = tierNodes.length;
+            if (count === 0) return [];
+            
+            const spacing = count === 1 ? 0 : Math.min(130, containerHeight / (count - 1));
+            const startY = count === 1 ? 260 : Math.max(60, (550 - (count - 1) * spacing) / 2);
+
+            return tierNodes.map((node, idx) => ({
+              ...node,
+              position: {
+                x: xPos,
+                y: startY + idx * spacing
+              }
+            }));
+          };
+
+          const positionedNodes = [
+            ...calculateTiers(sources, xSource),
+            ...calculateTiers(ctes, xCte),
+            ...calculateTiers(targets, xTarget)
+          ];
+
+          const configuredEdges = rawEdges.map(edge => ({
+            ...edge,
+            type: 'smoothstep',
+            animated: true,
+            style: { stroke: '#8B5CF6' }
+          }));
+
+          return { nodes: positionedNodes, edges: configuredEdges };
+        }, []);
+
+        const triggerAnalyze = useCallback(async (codeToAnalyze, chosenDialect) => {
+          setLoading(true);
+          setError(null);
+          setSelectedNode(null);
+          setSelectedColumn(null);
+          try {
+            const apiBase = backendUrl.trim().replace(/\/+$/, '');
+            const endpoint = apiBase ? `${apiBase}/api/analyze` : '/api/analyze';
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                sql_string: codeToAnalyze,
+                dialect: chosenDialect || null
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.detail || 'Analysis request failed.');
+            }
+
+            const data = await response.json();
+            const { nodes: parsedNodes, edges: parsedEdges, column_edges: parsedColEdges } = data;
+            
+            if (parsedNodes.length === 0) {
+              throw new Error("No queries, CTEs, or tables could be parsed from the SQL input.");
+            }
+
+            const laidOut = layoutGraph(parsedNodes, parsedEdges);
+            setNodes(laidOut.nodes);
+            setEdges(laidOut.edges);
+            setColumnEdges(parsedColEdges || []);
+
+            // Save to localStorage history
+            setHistory(prev => {
+              const filtered = prev.filter(h => h.query !== codeToAnalyze);
+              const newHist = [{ 
+                query: codeToAnalyze, 
+                dialect: chosenDialect, 
+                timestamp: new Date().toISOString() 
+              }, ...filtered].slice(0, 10);
+              localStorage.setItem('sql_lineage_history', JSON.stringify(newHist));
+              return newHist;
+            });
+
+          } catch (err) {
+            console.error(err);
+            setError(err.message || 'An unexpected error occurred.');
+          } finally {
+            setLoading(false);
+          }
+        }, [layoutGraph, setNodes, setEdges]);
+
+        // Load initial visual on mount
+        useEffect(() => {
+          triggerAnalyze(INITIAL_SQL, dialect);
+        }, []);
+
+        // Upload handler with client-side FileReader API
+        const handleFileUpload = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const text = event.target.result;
+            setSqlString(text);
+            setActiveTab('editor');
+            triggerAnalyze(text, dialect);
+          };
+          reader.readAsText(file);
+          e.target.value = null;
+        };
+
+        const handleReset = () => {
+          setSqlString(INITIAL_SQL);
+          setDialect('');
+          setActiveTab('editor');
+          triggerAnalyze(INITIAL_SQL, '');
+        };
+
+        const saveCurrentSnippet = () => {
+          const name = prompt("Enter a label for this snippet:", `Query Snippet ${savedSnippets.length + 1}`);
+          if (!name) return;
+          setSavedSnippets(prev => {
+            const newSaved = [{ 
+              name, 
+              query: sqlString, 
+              dialect, 
+              timestamp: new Date().toISOString() 
+            }, ...prev];
+            localStorage.setItem('sql_lineage_saved', JSON.stringify(newSaved));
+            return newSaved;
+          });
+        };
+
+        const deleteSavedSnippet = (e, indexToDelete) => {
+          e.stopPropagation();
+          setSavedSnippets(prev => {
+            const newSaved = prev.filter((_, idx) => idx !== indexToDelete);
+            localStorage.setItem('sql_lineage_saved', JSON.stringify(newSaved));
+            return newSaved;
+          });
+        };
+
+        const loadFromHistoryOrSaved = (queryText, queryDialect) => {
+          setSqlString(queryText);
+          setDialect(queryDialect || '');
+          setActiveTab('editor');
+          triggerAnalyze(queryText, queryDialect);
+        };
+
+        // Export React Flow as PNG Image
+        const exportPngImage = () => {
+          const container = document.querySelector('.react-flow');
+          if (!container) return;
+          
+          window.html2canvas(container, {
+            backgroundColor: '#0B0F19',
+            useCORS: true,
+            scale: 2
+          }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = 'sql-lineage-lineage.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+          });
+        };
+
+        // Table-Level trace resolution
+        const tableTrace = useMemo(() => {
+          if (!selectedNode) return { nodes: new Set(), edges: new Set() };
+          return getConnectedElements(nodes, edges, selectedNode.id);
+        }, [selectedNode, nodes, edges]);
+
+        // Column-Level trace resolution
+        const columnTrace = useMemo(() => {
+          if (!selectedColumn) return { nodes: new Set(), cols: new Set(), edges: new Set() };
+          return getColumnConnectedElements(columnEdges, selectedColumn.nodeId, selectedColumn.columnName);
+        }, [selectedColumn, columnEdges]);
+
+        // Compute layout nodes with opacity / tracing status
+        const finalNodes = useMemo(() => {
+          return nodes.map(n => {
+            let opacity = 1;
+            let isHighlighted = false;
+            
+            if (selectedColumn) {
+              opacity = columnTrace.nodes.has(n.id) ? 1 : 0.25;
+            } else if (selectedNode) {
+              opacity = tableTrace.nodes.has(n.id) ? 1 : 0.25;
+              isHighlighted = n.id === selectedNode.id;
+            }
+            
+            return {
+              ...n,
+              selected: isHighlighted,
+              data: {
+                ...n.data,
+                selectedColTrace: columnTrace.cols,
+                onColumnClick: (nodeId, colName) => {
+                  setSelectedColumn(prev => 
+                    prev && prev.nodeId === nodeId && prev.columnName === colName 
+                      ? null 
+                      : { nodeId, columnName: colName }
+                  );
+                }
+              },
+              style: {
+                ...n.style,
+                opacity
+              }
+            };
+          });
+        }, [nodes, selectedNode, selectedColumn, tableTrace, columnTrace]);
+
+        // Compute edges with tracing styling
+        const finalEdges = useMemo(() => {
+          if (selectedColumn) {
+            // Draw column connections
+            const virtualEdges = [];
+            columnEdges.forEach(e => {
+              const key = `col_e_${e.source_node}_${e.source_col}_${e.target_node}_${e.target_col}`;
+              if (columnTrace.edges.has(key)) {
+                virtualEdges.push({
+                  id: key,
+                  source: e.source_node,
+                  target: e.target_node,
+                  animated: true,
+                  style: { stroke: '#F59E0B', strokeWidth: 2.5, strokeDasharray: '6,4' }, // glowing dashed gold
+                  type: 'smoothstep'
+                });
+              }
+            });
+            
+            return [
+              ...edges.map(e => ({
+                ...e,
+                style: { stroke: '#475569', opacity: 0.1 },
+                animated: false
+              })),
+              ...virtualEdges
+            ];
+          }
+
+          if (selectedNode) {
+            // Highlight table dependencies
+            return edges.map(e => {
+              const isConnected = tableTrace.edges.has(e.id);
+              return {
+                ...e,
+                style: {
+                  stroke: isConnected ? '#8B5CF6' : '#475569',
+                  strokeWidth: isConnected ? 3 : 1.5,
+                  opacity: isConnected ? 1 : 0.15
+                },
+                animated: isConnected
+              };
+            });
+          }
+
+          return edges;
+        }, [edges, selectedNode, selectedColumn, tableTrace, columnEdges, columnTrace]);
+
+        const metrics = useMemo(() => {
+          const counts = { source: 0, cte: 0, target: 0 };
+          nodes.forEach(n => {
+            if (counts[n.data.nodeType] !== undefined) {
+              counts[n.data.nodeType]++;
+            }
+          });
+          return counts;
+        }, [nodes]);
+
+        return (
+          <div className="flex h-screen w-screen bg-[#0B0F19] text-slate-100 overflow-hidden font-sans">
+            
+            {/* Left Panel: Editor & Saved Files (40% width) */}
+            <div className="w-[40%] border-r border-[#1E293B] bg-[#0E1322] flex flex-col h-full overflow-hidden">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-[#1E293B] flex items-center justify-between bg-[#0E1322]">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+                  <h1 className="text-lg font-bold tracking-tight text-white">
+                    SQL Lineage Visualizer
+                  </h1>
+                </div>
+                
+                {/* Dialect Switcher Dropdown */}
+                <select
+                  value={dialect}
+                  onChange={(e) => {
+                    setDialect(e.target.value);
+                    triggerAnalyze(sqlString, e.target.value);
+                  }}
+                  className="bg-[#1E293B] border border-slate-700 rounded-lg text-xs font-semibold px-2 py-1 text-slate-300 focus:outline-none focus:border-slate-500 cursor-pointer"
+                  title="Choose parsing engine dialect"
+                >
+                  <option value="">Standard SQL</option>
+                  <option value="snowflake">Snowflake</option>
+                  <option value="bigquery">BigQuery</option>
+                  <option value="postgres">PostgreSQL</option>
+                  <option value="spark">Spark SQL</option>
+                  <option value="redshift">Redshift</option>
+                  <option value="mysql">MySQL</option>
+                  <option value="sqlite">SQLite</option>
+                </select>
+              </div>
+
+              {/* Sub tabs toolbar */}
+              <div className="px-6 py-2 bg-[#13192B] border-b border-[#1E293B] flex items-center justify-between">
+                <div className="flex space-x-1.5">
+                  <button
+                    onClick={() => setActiveTab('editor')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 ${
+                      activeTab === 'editor' ? 'bg-[#8B5CF6] text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Code className="w-3.5 h-3.5" />
+                    Editor
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('history')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 ${
+                      activeTab === 'history' ? 'bg-[#8B5CF6] text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    History ({history.length})
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('saved')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 ${
+                      activeTab === 'saved' ? 'bg-[#8B5CF6] text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Saved ({savedSnippets.length})
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('settings')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 ${
+                      activeTab === 'settings' ? 'bg-[#8B5CF6] text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    Settings
+                  </button>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-1.5 rounded-lg bg-[#1E293B] border border-slate-700 hover:border-slate-500 text-slate-300 transition-all duration-200"
+                    title="Upload custom sql query"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                  </button>
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".sql,.txt" className="hidden" />
+                  
+                  <button
+                    onClick={saveCurrentSnippet}
+                    className="p-1.5 rounded-lg bg-[#1E293B] border border-slate-700 hover:border-slate-500 text-slate-300 transition-all duration-200"
+                    title="Save current snippet"
+                  >
+                    <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400/20" />
+                  </button>
+                  
+                  <button
+                    onClick={handleReset}
+                    className="p-1.5 rounded-lg bg-[#1E293B] border border-slate-700 hover:border-slate-500 text-slate-300 transition-all duration-200"
+                    title="Reset query to default example"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab Contents */}
+              <div className="flex-1 overflow-hidden relative">
+                {activeTab === 'editor' && (
+                  <div className="w-full h-full relative overflow-auto">
+                    <div 
+                      ref={editorDomRef}
+                      className="codejar-editor w-full h-full bg-[#0E1322] text-slate-300 font-mono text-sm px-6 py-4 focus:outline-none leading-relaxed"
+                      style={{ caretColor: '#8B5CF6' }}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'history' && (
+                  <div className="w-full h-full overflow-y-auto p-6 space-y-3">
+                    <h3 className="text-xs font-bold text-slate-500 tracking-wider">LAST 10 PARSED QUERIES</h3>
+                    {history.length === 0 ? (
+                      <p className="text-sm text-slate-500">No query history yet. Run some SQL analyses!</p>
+                    ) : (
+                      history.map((h, index) => (
+                        <div 
+                          key={index}
+                          onClick={() => loadFromHistoryOrSaved(h.query, h.dialect)}
+                          className="p-4 rounded-xl bg-[#13192B] border border-[#1E293B] hover:border-purple-500 cursor-pointer transition-all duration-200 space-y-2 group"
+                        >
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span className="bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded font-mono uppercase font-bold">
+                              {h.dialect || 'Standard'}
+                            </span>
+                            <span>{new Date(h.timestamp).toLocaleTimeString()}</span>
+                          </div>
+                          <pre className="font-mono text-xs text-slate-300 truncate max-w-full opacity-80 group-hover:opacity-100">{h.query}</pre>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'saved' && (
+                  <div className="w-full h-full overflow-y-auto p-6 space-y-3">
+                    <h3 className="text-xs font-bold text-slate-500 tracking-wider">SAVED SNIPPETS</h3>
+                    {savedSnippets.length === 0 ? (
+                      <p className="text-sm text-slate-500">No saved snippets yet. Click the Star icon to bookmark your query!</p>
+                    ) : (
+                      savedSnippets.map((s, index) => (
+                        <div 
+                          key={index}
+                          onClick={() => loadFromHistoryOrSaved(s.query, s.dialect)}
+                          className="p-4 rounded-xl bg-[#13192B] border border-[#1E293B] hover:border-purple-500 cursor-pointer transition-all duration-200 flex items-start justify-between group"
+                        >
+                          <div className="space-y-1.5">
+                            <div className="font-bold text-slate-200 text-sm">{s.name}</div>
+                            <div className="flex items-center gap-2 text-[10px]">
+                              <span className="bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded font-mono uppercase font-bold">
+                                {s.dialect || 'Standard'}
+                              </span>
+                              <span className="text-slate-500">{new Date(s.timestamp).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => deleteSavedSnippet(e, index)}
+                            className="p-1 rounded bg-red-950/20 hover:bg-red-950 text-red-400 border border-red-950/40 transition-colors"
+                            title="Delete snippet"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'settings' && (
+                  <div className="w-full h-full overflow-y-auto p-6 space-y-6">
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-bold text-slate-500 tracking-wider font-mono">CONFIGURATION</h3>
+                      <p className="text-xs text-slate-400 leading-normal">
+                        Configure the API endpoint URL for your lineage analyzer. Use this when hosting the frontend (e.g., Netlify) separate from the backend (e.g., Render).
+                      </p>
+                    </div>
+
+                    <div className="space-y-4 bg-[#13192B] p-4 rounded-xl border border-[#1E293B]">
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-slate-300">Backend API URL</label>
+                        <input
+                          type="text"
+                          value={backendUrl}
+                          onChange={(e) => setBackendUrl(e.target.value)}
+                          placeholder="e.g. https://your-app.onrender.com (leave blank for local/proxy)"
+                          className="w-full bg-[#0E1322] border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500 placeholder-slate-500 font-mono"
+                        />
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          Leave blank to use the current host (relative URL). If using Netlify's <code>_redirects</code> proxy, leave this blank as well.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center space-x-3 pt-2">
+                        <button
+                          onClick={saveBackendUrl}
+                          className="px-3 py-1.5 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] text-white text-xs font-semibold transition-all duration-150 cursor-pointer"
+                        >
+                          Save Settings
+                        </button>
+                        <button
+                          onClick={testBackendConnection}
+                          disabled={testingConnection}
+                          className="px-3 py-1.5 rounded-lg bg-[#1E293B] border border-[#334155] hover:border-slate-500 text-slate-300 text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                        >
+                          {testingConnection ? 'Testing...' : 'Test Connection'}
+                        </button>
+                      </div>
+
+                      {connectionStatus && (
+                        <div className={`text-xs px-3 py-2 rounded-lg border flex items-center gap-2 ${
+                          connectionStatus.type === 'success' 
+                            ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-400' 
+                            : 'bg-red-950/20 border-red-800/40 text-red-400'
+                        }`}>
+                          <div className={`w-2.5 h-2.5 rounded-full ${
+                            connectionStatus.type === 'success' ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
+                          }`} />
+                          <span>{connectionStatus.message}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-slate-400 font-mono">Deployment Tips</h4>
+                      <ul className="text-xs text-slate-500 space-y-2 list-disc pl-4 leading-relaxed">
+                        <li><strong>Render Backend:</strong> Ensure your Render web service is live. Note that free instances spin down after 15 minutes of inactivity, which causes a 50+ second delay on the first query.</li>
+                        <li><strong>Netlify Frontend:</strong> You can deploy the frontend directly by targeting the <code>backend</code> directory containing <code>index.html</code>.</li>
+                        <li><strong>CORS Policy:</strong> The FastAPI backend is configured to accept requests from all origins (<code>*</code>), so direct connection will work without issues.</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Button Footer */}
+              <div className="p-6 border-t border-[#1E293B] bg-[#0E1322] flex flex-col space-y-3">
+                {error && (
+                  <div className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-800 text-red-200 text-xs flex items-start space-x-2">
+                    <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+                
+                <button
+                  onClick={() => triggerAnalyze(sqlString, dialect)}
+                  disabled={loading}
+                  className="w-full py-3 rounded-xl bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:bg-purple-900/50 disabled:cursor-not-allowed text-white font-bold flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all duration-200 hover:shadow-[0_0_25px_rgba(139,92,246,0.5)] active:scale-98"
+                >
+                  <Play className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  {loading ? "Analyzing SQL..." : "Analyze Lineage"}
+                </button>
+                <div className="pt-2 text-center text-xs text-slate-500 font-sans tracking-wide">
+                  Developed by <span className="text-purple-400 font-semibold">Yash Dantale</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Panel: Canvas Panel (60% width) */}
+            <div className="w-[60%] h-full bg-[#0B0F19] relative flex flex-col overflow-hidden">
+              
+              {/* Top Info Bar */}
+              <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+                <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#161B26]/90 border border-[#1E293B] backdrop-blur-md text-xs">
+                  <span className="text-[#14B8A6] font-semibold">{metrics.source} Sources</span>
+                  <span className="text-slate-500">•</span>
+                  <span className="text-[#3B82F6] font-semibold">{metrics.cte} CTEs</span>
+                  <span className="text-slate-500">•</span>
+                  <span className="text-[#8B5CF6] font-semibold">{metrics.target} Targets</span>
+                </div>
+
+                {/* Clear column selection overlay */}
+                {selectedColumn && (
+                  <button 
+                    onClick={() => setSelectedColumn(null)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-yellow-500/10 border border-yellow-500/35 hover:bg-yellow-500/20 text-yellow-300 text-xs font-semibold backdrop-blur-md transition-colors"
+                  >
+                    <span>Traced column: <strong>{selectedColumn.columnName}</strong></span>
+                    <span className="bg-yellow-500/20 hover:bg-yellow-500/40 rounded px-1.5 ml-1">✕ Clear</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Action Toolbar on the canvas */}
+              <div className="absolute top-4 right-4 z-10 flex items-center space-x-2">
+                <button
+                  onClick={exportPngImage}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#161B26]/90 border border-[#1E293B] hover:border-slate-500 text-slate-300 text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md transition-all"
+                  title="Export current lineage canvas as PNG"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export PNG
+                </button>
+              </div>
+
+              {/* Legend */}
+              <div className="absolute bottom-4 left-4 z-10 px-4 py-3 rounded-xl bg-[#161B26]/90 border border-[#1E293B] backdrop-blur-md text-xs space-y-2 w-48 shadow-lg">
+                <h3 className="font-bold text-slate-300 border-b border-slate-700/60 pb-1 mb-1">Graph Legend</h3>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#14B8A6]"></span>
+                  <span className="text-slate-300">Source Tables</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6]"></span>
+                  <span className="text-slate-300">Common Table Exp.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#8B5CF6]"></span>
+                  <span className="text-slate-300">Target Table / Output</span>
+                </div>
+                {selectedColumn && (
+                  <div className="flex items-center gap-2 border-t border-slate-700/50 pt-1.5 mt-1 animate-pulse">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]"></span>
+                    <span className="text-yellow-400 font-medium">Column Trace active</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Selected Node Details Side drawer */}
+              {selectedNode && (
+                <div className="absolute top-16 right-4 z-10 w-72 p-4 rounded-xl bg-[#161B26]/95 border border-[#1E293B] backdrop-blur-md text-xs shadow-xl animate-in slide-in-from-right duration-200">
+                  <div className="flex items-center justify-between border-b border-[#1E293B] pb-2 mb-3">
+                    <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-purple-400" />
+                      Node Properties
+                    </span>
+                    <button 
+                      onClick={() => setSelectedNode(null)}
+                      className="text-slate-400 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <span className="text-[10px] text-slate-500 block">NAME</span>
+                      <span className="font-mono text-sm text-slate-100 font-semibold break-all">{selectedNode.data.label}</span>
+                    </div>
+                    
+                    <div>
+                      <span className="text-[10px] text-slate-500 block">TYPE</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                        selectedNode.data.nodeType === 'source' ? 'bg-[#14B8A6]/20 text-[#14B8A6]' :
+                        selectedNode.data.nodeType === 'target' ? 'bg-[#8B5CF6]/20 text-[#8B5CF6]' :
+                        'bg-[#3B82F6]/20 text-[#3B82F6]'
+                      }`}>
+                        {selectedNode.data.nodeType === 'cte' ? 'CTE (Common Table Expression)' : selectedNode.data.nodeType}
+                      </span>
+                    </div>
+
+                    {/* Source Table Aliases */}
+                    {selectedNode.data.nodeType === 'source' && selectedNode.data.aliases && selectedNode.data.aliases.length > 0 && (
+                      <div className="pt-2 border-t border-[#1E293B]/60">
+                        <span className="text-[10px] text-slate-500 block mb-1">ALIASES & REFERENCE LOCATIONS</span>
+                        <div className="space-y-1">
+                          {selectedNode.data.aliases.map((alias, i) => (
+                            <div key={i} className="font-mono text-[11px] bg-[#0E1322] border border-slate-700/60 px-2.5 py-1 rounded text-slate-300">
+                              {alias}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CTE & Target Tables Relationships Section */}
+                    {selectedNode.data.referenced_tables && selectedNode.data.referenced_tables.length > 0 && (
+                      <div className="pt-2 border-t border-[#1E293B]/60">
+                        <span className="text-[10px] text-slate-500 block mb-1.5">QUERY RELATIONSHIPS</span>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                          {selectedNode.data.referenced_tables.map((table, i) => (
+                            <div key={i} className="flex flex-col p-2.5 rounded-lg bg-[#0E1322]/80 border border-slate-700/40 text-[11px]">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                                  table.role === 'DRIVING' ? 'bg-[#14B8A6]/20 text-[#14B8A6]' : 'bg-[#3b82f6]/25 text-blue-400'
+                                }`}>
+                                  {table.role}
+                                </span>
+                                {table.alias && (
+                                  <span className="font-mono text-slate-400 text-[10px]">
+                                    AS <strong className="text-purple-400 font-semibold">{table.alias}</strong>
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-mono text-slate-200 break-all">{table.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-[#1E293B]/60 text-[11px] text-slate-400 leading-relaxed">
+                      {selectedNode.data.nodeType === 'source' && "This is a raw base table read in the FROM or JOIN clauses of your SQL expression."}
+                      {selectedNode.data.nodeType === 'cte' && "This is an intermediate temporary result set defined in a WITH clause. It acts as a bridge in the execution chain."}
+                      {selectedNode.data.nodeType === 'target' && "This is the final destination output table updated by INSERT, CREATE TABLE, or generated from the top-level SELECT statement."}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* React Flow Canvas */}
+              <div className="flex-1 w-full h-full relative">
+                {nodes.length > 0 ? (
+                  <ReactFlow
+                    nodes={finalNodes}
+                    edges={finalEdges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={(e, n) => setSelectedNode(n)}
+                    onPaneClick={() => {
+                      setSelectedNode(null);
+                      setSelectedColumn(null);
+                    }}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    fitViewOptions={{ padding: 0.15 }}
+                    minZoom={0.2}
+                    maxZoom={1.5}
+                  >
+                    <Background 
+                      variant={BackgroundVariant.Dots} 
+                      color="#1E293B" 
+                      gap={24} 
+                      size={1.5} 
+                    />
+                    <Controls className="bg-[#161B26] border border-[#1E293B] rounded-lg text-slate-300 fill-slate-300 [&>button]:border-b [&>button]:border-[#1E293B] [&>button]:bg-transparent hover:[&>button]:bg-[#1E293B]" />
+                  </ReactFlow>
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 space-y-4">
+                    <div className="pulse-fast flex flex-col items-center">
+                      <Layers className="w-12 h-12 text-[#8B5CF6] mb-2" />
+                      <p className="text-sm font-semibold tracking-wide">Awaiting Lineage Analysis...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

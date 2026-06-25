@@ -1,0 +1,25 @@
+# Render Blueprint Specification
+# Read more at: https://render.com/docs/blueprints
+
+services:
+  - type: web
+    name: sql-lineage-backend
+    env: python
+    
+    # We specify backend as the root directory because the code and requirements.txt live there.
+    rootDir: backend
+    
+    # Build command runs inside rootDir (backend)
+    buildCommand: pip install -r requirements.txt
+    
+    # Start command runs inside rootDir (backend)
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    
+    # Free tier works great, or you can select starter/standard
+    plan: free
+    
+    # Auto-deploy when code changes on GitHub
+    autoDeploy: true
+
+    # Optional: Configure health check path so Render knows when service is healthy
+    healthCheckPath: /api/health
