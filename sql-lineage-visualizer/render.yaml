@@ -23,3 +23,10 @@ services:
 
     # Optional: Configure health check path so Render knows when service is healthy
     healthCheckPath: /api/health
+
+    # Pin Python version to 3.12.3 to ensure pre-compiled wheels (pydantic-core, etc.) are used,
+    # avoiding compiling from source which fails in Render's read-only cargo environment.
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+
