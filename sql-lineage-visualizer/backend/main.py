@@ -133,7 +133,7 @@ def extract_query_relations(query_node: exp.Expression, cte_names: set):
     selects = get_selects_outside_ctes(query_node)
     for select in selects:
         # Check FROM clause
-        from_node = select.args.get("from_")
+        from_node = select.args.get("from")
         if from_node:
             table_node = from_node.find(exp.Table)
             if table_node:
@@ -184,7 +184,7 @@ def resolve_column_edges(query_node: exp.Expression, target_node_id: str, cte_na
         driving_name = None
         
         # FROM clause
-        from_node = select.args.get("from_")
+        from_node = select.args.get("from")
         if from_node:
             table_node = from_node.find(exp.Table)
             if table_node:
