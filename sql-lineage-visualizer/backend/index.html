@@ -527,14 +527,13 @@ FROM marketing_segments;`;
           const xCte = 480;
           const xTarget = 840;
 
-          const containerHeight = 500;
-
           const calculateTiers = (tierNodes, xPos) => {
             const count = tierNodes.length;
             if (count === 0) return [];
             
-            const spacing = count === 1 ? 0 : Math.min(130, containerHeight / (count - 1));
-            const startY = count === 1 ? 260 : Math.max(60, (550 - (count - 1) * spacing) / 2);
+            const spacing = 220; // Ensure zero vertical overlap for multi-column nodes
+            const totalHeight = (count - 1) * spacing;
+            const startY = count === 1 ? 180 : Math.max(60, 275 - (totalHeight / 2));
 
             return tierNodes.map((node, idx) => ({
               ...node,
@@ -581,8 +580,19 @@ FROM marketing_segments;`;
             });
 
             if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.detail || 'Analysis request failed.');
+              let errorMsg = 'Analysis request failed.';
+              try {
+                const errorData = await response.json();
+                errorMsg = errorData.detail || errorMsg;
+              } catch {
+                try {
+                  const text = await response.text();
+                  errorMsg = text.substring(0, 100) || `Error ${response.status}: ${response.statusText}`;
+                } catch {
+                  errorMsg = `Error ${response.status}: ${response.statusText}`;
+                }
+              }
+              throw new Error(errorMsg);
             }
 
             const data = await response.json();
@@ -615,7 +625,7 @@ FROM marketing_segments;`;
           } finally {
             setLoading(false);
           }
-        }, [layoutGraph, setNodes, setEdges]);
+        }, [layoutGraph, setNodes, setEdges, backendUrl]);
 
         // Load initial visual on mount
         useEffect(() => {
